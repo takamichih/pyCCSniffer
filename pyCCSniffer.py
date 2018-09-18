@@ -224,6 +224,7 @@ class PacketHandler(object):
             if (self.__rawphy):
                 rawFrame = RawFrame(sniffedPacket.get_macPDU()[:-2])
                 capture = CapturedFrame(rawFrame, rssiSniff, self.__annotation)
+                self.captures.append(capture)
                 print(capture)
                 sys.stdout.flush()
             else:
