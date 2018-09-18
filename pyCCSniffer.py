@@ -93,7 +93,6 @@ class SniffedPacket(object):
     def get_macPDU(self):
         return self.__macPDUByteArray
 
-
 class CapturedFrame(object):
     def __init__(self, frame, rssiSniff, annotation):
         self.frame = frame
@@ -120,6 +119,16 @@ class CustomAssertFrame(object):
         return "AssertFrame Time[{}] Code[{}] Line[{}] File[{}] Compiled[{}]".format(
             self.time, self.code, self.line, self.file, self.date)
 
+class RawFrame(object):
+    def __init__(self, data):
+        self.data = data
+
+    def __str__(self):
+        str = "RawFrame Data["
+        for b in self.data:
+            str += "{:02X} ".format(b)
+        str = (str[:-1] if len(self.data) != 0 else str) + "]"
+        return str
 
 class PacketHandler(object):
     def __init__(self):
@@ -140,6 +149,7 @@ class PacketHandler(object):
         self.__dataFramePrintingEnabled = True
         self.__ackPrintingEnabled = True
         self.__commandPrintingEnabled = True
+        self.__rawphy = False
         self.captures = []
         self.enable()
 
@@ -156,6 +166,12 @@ class PacketHandler(object):
 
     def setAnnotation(self, annotation):
         self.__annotation = annotation
+
+    def setRawphy(self, rawphy):
+        self.__rawphy = rawphy
+
+    def getRawphy(self):
+        return self.__rawphy
 
     def printAllFrames(self):
         print("Printing all captures")
@@ -193,7 +209,6 @@ class PacketHandler(object):
     def handleSniffedPacket(self, sniffedPacket):
         if self.__enabled is False:
             return
-
         try:
             if (None == sniffedPacket) or (
                     len(sniffedPacket.get_macPDU()) < 2):
@@ -206,27 +221,33 @@ class PacketHandler(object):
                 stats["CRC Errors"] += 1
                 return
 
-            customFrame = self.handleCustomFrames(sniffedPacket)
-            if customFrame is not None:
-                # A custom, non-802.15.4 frame was received and processed
-                capture = CapturedFrame(customFrame, rssiSniff,
-                                        self.__annotation)
-                self.captures.append(capture)
+            if (self.__rawphy):
+                rawFrame = RawFrame(sniffedPacket.get_macPDU()[:-2])
+                capture = CapturedFrame(rawFrame, rssiSniff, self.__annotation)
                 print(capture)
                 sys.stdout.flush()
-
             else:
-                frame = ieee.IEEE15dot4FrameFactory.parse(sniffedPacket)
-                capture = CapturedFrame(frame, rssiSniff, self.__annotation)
-
-                if capture is not None:
+                customFrame = self.handleCustomFrames(sniffedPacket)
+                if customFrame is not None:
+                    # A custom, non-802.15.4 frame was received and processed
+                    capture = CapturedFrame(customFrame, rssiSniff,
+                                            self.__annotation)
                     self.captures.append(capture)
                     print(capture)
-                    # hack here!
                     sys.stdout.flush()
 
-                stats[ieee.FrameType.toString(frame.fcf.frametype)] += 1
-                stats['Dissected'] += 1
+                else:
+                    frame = ieee.IEEE15dot4FrameFactory.parse(sniffedPacket)
+                    capture = CapturedFrame(frame, rssiSniff, self.__annotation)
+
+                    if capture is not None:
+                        self.captures.append(capture)
+                        print(capture)
+                        # hack here!
+                        sys.stdout.flush()
+
+                        stats[ieee.FrameType.toString(frame.fcf.frametype)] += 1
+                        stats['Dissected'] += 1
 
         except Exception as e:
             logger.warn("Error dissecting frame.")
@@ -568,6 +589,7 @@ if __name__ == '__main__':
         h.write('d: Toggle frame dissector\n')
         h.write('a*: Set an annotation (write "a" to remove it)\n')
         h.write('p: Print all capture packets\n')
+        h.write('r: Do not parse MAC frame, CRC still enabled\n')
         h.write('q: Quit')
         h = h.getvalue()
         print(h)
@@ -615,6 +637,9 @@ if __name__ == '__main__':
                             else:
                                 snifferDev.start()
                                 print("Started")
+                        elif cmd == 'r':
+                            packetHandler.setRawphy(not packetHandler.getRawphy())
+                            print('MAC parsing {}.'.format('disabled' if packetHandler.getRawphy() else 'enabled'))
                         elif 'a' == cmd[0]:
                             if 1 == len(cmd):
                                 packetHandler.setAnnotation('')
