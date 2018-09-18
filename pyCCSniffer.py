@@ -150,6 +150,8 @@ class PacketHandler(object):
         self.__ackPrintingEnabled = True
         self.__commandPrintingEnabled = True
         self.__rawphy = False
+        self.__printDelta = False
+        self.__prevTimestampUS = None
         self.captures = []
         self.enable()
 
@@ -172,6 +174,12 @@ class PacketHandler(object):
 
     def getRawphy(self):
         return self.__rawphy
+
+    def setPrintDelta(self, printDelta):
+        self.__printDelta = printDelta
+
+    def getPrintDelta(self):
+        return self.__printDelta
 
     def printAllFrames(self):
         print("Printing all captures")
@@ -209,6 +217,9 @@ class PacketHandler(object):
     def handleSniffedPacket(self, sniffedPacket):
         if self.__enabled is False:
             return
+        if self.__printDelta and self.__prevTimestampUS != None:
+            sys.stdout.write("d = {:11.2f}, ".format(sniffedPacket.get_timestamp() - self.__prevTimestampUS))
+        self.__prevTimestampUS = sniffedPacket.get_timestamp()
         try:
             if (None == sniffedPacket) or (
                     len(sniffedPacket.get_macPDU()) < 2):
@@ -590,6 +601,7 @@ if __name__ == '__main__':
         h.write('d: Toggle frame dissector\n')
         h.write('a*: Set an annotation (write "a" to remove it)\n')
         h.write('p: Print all capture packets\n')
+        h.write('t: Print timestamp delta in microseconds\n')
         h.write('r: Do not parse MAC frame, CRC still enabled\n')
         h.write('q: Quit')
         h = h.getvalue()
@@ -641,6 +653,9 @@ if __name__ == '__main__':
                         elif cmd == 'r':
                             packetHandler.setRawphy(not packetHandler.getRawphy())
                             print('MAC parsing {}.'.format('disabled' if packetHandler.getRawphy() else 'enabled'))
+                        elif cmd == 't':
+                            packetHandler.setPrintDelta(not packetHandler.getPrintDelta())
+                            print('Timestamp delta printing {}.'.format('enabled' if packetHandler.getPrintDelta() else 'disabled'))
                         elif 'a' == cmd[0]:
                             if 1 == len(cmd):
                                 packetHandler.setAnnotation('')
